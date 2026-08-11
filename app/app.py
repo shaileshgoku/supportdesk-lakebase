@@ -54,6 +54,7 @@ def get_tickets():
                     ticket_id,
                     title,
                     status,
+                    priority,
                     created_by,
                     created_at
                 FROM public.tickets
@@ -62,18 +63,23 @@ def get_tickets():
 
             return cur.fetchall()
 
-def create_ticket(title, created_by):
+def create_ticket(title, priority, created_by):
     """Create a new support ticket."""
 
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO public.tickets
-                    (title, status, created_by)
+                    (title, status, priority, created_by)
                 VALUES
-                    (%s, %s, %s)
+                    (%s, %s, %s, %s)
                 RETURNING ticket_id
-            """, (title.strip(), "open", created_by.strip()))
+            """, (
+                title.strip(),
+                "open",
+                priority,
+                created_by.strip()
+            ))
 
             ticket_id = cur.fetchone()[0]
             conn.commit()
@@ -90,6 +96,22 @@ def update_ticket_status(ticket_id, new_status):
                 SET status = %s
                 WHERE ticket_id = %s
             """, (new_status, ticket_id))
+
+            conn.commit()
+
+def update_ticket_priority(ticket_id, priority):
+    """Update the priority of a support ticket."""
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE public.tickets
+                SET priority = %s
+                WHERE ticket_id = %s
+            """, (
+                priority,
+                ticket_id
+            ))
 
             conn.commit()
 
@@ -150,7 +172,7 @@ def display_tickets():
     # Create ticket options for the dropdown
     ticket_options = {
         f"#{ticket_id} — {title}": ticket_id
-        for ticket_id, title, status, created_by, created_at in tickets
+        for ticket_id, title, status, priority, created_by, created_at in tickets
     }
 
     selected_label = st.selectbox(
@@ -166,7 +188,7 @@ def display_tickets():
         if ticket[0] == selected_ticket_id
     )
 
-    ticket_id, title, status, created_by, created_at = selected_ticket
+    ticket_id, title, status, priority, created_by, created_at = selected_ticket
 
     st.markdown("---")
 
@@ -176,15 +198,18 @@ def display_tickets():
 
     st.markdown(f"### #{ticket_id} — {title}")
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
 
     with col1:
         st.write(f"**Status:** {status}")
 
     with col2:
-        st.write(f"**Created by:** {created_by}")
+        st.write(f"**Priority:** {priority}")
 
     with col3:
+        st.write(f"**Created by:** {created_by}")
+
+    with col4:
         st.write(
             f"**Created:** {created_at.strftime('%Y-%m-%d %H:%M')}"
         )
@@ -225,6 +250,47 @@ def display_tickets():
 
             st.success(
                 f"Ticket #{ticket_id} updated to '{new_status}'."
+            )
+
+            st.rerun()
+
+    # --------------------------------------------------
+    # Update Ticket Priority
+    # --------------------------------------------------
+
+    st.subheader("Update Priority")
+
+    priority_options = [
+        "low",
+        "medium",
+        "high",
+        "critical"
+    ]
+
+    new_priority = st.selectbox(
+        "Ticket priority",
+        options=priority_options,
+        index=priority_options.index(priority),
+        key=f"priority_{ticket_id}"
+    )
+
+    if st.button(
+        "Update Priority",
+        key=f"update_priority_{ticket_id}",
+        type="primary"
+    ):
+
+        if new_priority == priority:
+            st.info("Ticket is already at this priority.")
+
+        else:
+            update_ticket_priority(
+                ticket_id,
+                new_priority
+            )
+
+            st.success(
+                f"Ticket #{ticket_id} priority updated to '{new_priority}'."
             )
 
             st.rerun()
@@ -302,8 +368,8 @@ def display_tickets():
 
                 st.rerun()
 
+    st.markdown("---")
 
-# Streamlit UI
 def main():
     st.set_page_config(
         page_title="SupportDesk",
@@ -316,7 +382,10 @@ def main():
 
     st.markdown("---")
 
+    # --------------------------------------------------
     # Create New Ticket
+    # --------------------------------------------------
+
     st.subheader("Create New Ticket")
 
     with st.form("create_ticket_form", clear_on_submit=True):
@@ -324,6 +393,12 @@ def main():
         title = st.text_input(
             "Ticket title",
             placeholder="Describe the support issue"
+        )
+
+        priority = st.selectbox(
+            "Priority",
+            ["low", "medium", "high", "critical"],
+            index=1
         )
 
         created_by = st.text_input(
@@ -339,13 +414,16 @@ def main():
         if submitted:
 
             if not title.strip() or not created_by.strip():
+
                 st.error(
                     "Please enter both the ticket title and your name."
                 )
 
             else:
+
                 ticket_id = create_ticket(
                     title,
+                    priority,
                     created_by
                 )
 
@@ -357,7 +435,10 @@ def main():
 
     st.markdown("---")
 
-    # Display existing tickets
+    # --------------------------------------------------
+    # Display Tickets
+    # --------------------------------------------------
+
     display_tickets()
 
 

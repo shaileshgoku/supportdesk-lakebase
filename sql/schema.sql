@@ -5,6 +5,7 @@ CREATE TABLE tickets (
     ticket_id SERIAL PRIMARY KEY,
     title VARCHAR(200) NOT NULL,
     status VARCHAR(50) NOT NULL DEFAULT 'open',
+    priority VARCHAR(20) NOT NULL DEFAULT 'medium',
     created_by VARCHAR(100) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
