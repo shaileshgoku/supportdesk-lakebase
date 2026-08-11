@@ -1,8 +1,8 @@
-# 🎫 SupportDesk — Lakebase-Powered Support Ticket Management
+# 🎫 DE001 - SupportDesk — Lakebase-Powered Support Ticket Management
 
 A transactional support ticket management application built using **Databricks Apps, Streamlit, and Lakebase PostgreSQL**.
 
-The application allows internal teams to create support tickets, view existing tickets, read ticket conversations, add messages, and update ticket status.
+The application allows internal teams to create support tickets, view existing tickets, read ticket conversations, add messages, update ticket status, and prioritize support requests.
 
 ---
 
@@ -16,7 +16,7 @@ Without a centralized support system, requests can become difficult to track:
 - Which employee created the request?
 - What conversations have happened?
 - What is the current status of each ticket?
-- Can support teams update and track tickets in one place?
+- Which tickets should be handled first?
 
 This project solves the problem by providing a lightweight transactional support ticket application backed by **Databricks Lakebase PostgreSQL**.
 
@@ -31,219 +31,182 @@ The application provides the following capabilities:
 3. Create a new support ticket
 4. Add messages to an existing ticket
 5. Update ticket status
-6. Persist all changes in Lakebase
-7. Deploy the application using Databricks Apps
+6. Set ticket priority
+7. Update ticket priority
+8. Persist all changes in Lakebase
+9. Deploy the application using Databricks Apps
 
 ---
 
-# 🏗️ Architecture
+## 🏗️ Architecture
 
-```text
-                    ┌─────────────────────┐
-                    │        User         │
-                    │     Web Browser     │
-                    └──────────┬──────────┘
-                               │
-                               ▼
-                    ┌─────────────────────┐
-                    │   Databricks Apps   │
-                    │      Streamlit      │
-                    └──────────┬──────────┘
-                               │
-                               │ psycopg
-                               ▼
-                    ┌─────────────────────┐
-                    │      Lakebase       │
-                    │  PostgreSQL Database│
-                    └──────────┬──────────┘
-                               │
-                  ┌────────────┴────────────┐
-                  │                         │
-                  ▼                         ▼
-           ┌──────────────┐       ┌──────────────────┐
-           │    tickets   │       │ ticket_messages  │
-           └──────────────┘       └──────────────────┘
-```
+    User
+      │
+      ▼
+    Databricks Apps
+      │
+      │ Streamlit
+      ▼
+    Application Logic
+      │
+      │ psycopg
+      ▼
+    Lakebase PostgreSQL
+      │
+      ├───────────────┐
+      ▼               ▼
+    tickets      ticket_messages
 
 ---
 
-# 🗄️ Data Model
+## 🗄️ Data Model
 
-SupportDesk uses a simple relational data model consisting of two related tables.
+SupportDesk uses two related transactional tables.
 
-```text
-┌─────────────────────────────────────┐
-│              tickets                │
-├─────────────────────────────────────┤
-│ PK  ticket_id      SERIAL           │
-│     title          VARCHAR(200)     │
-│     status         VARCHAR(50)      │
-│     created_by     VARCHAR(100)     │
-│     created_at     TIMESTAMP        │
-└──────────────────┬──────────────────┘
-                   │
-                   │ 1
-                   │
-                   │
-                   │ Many
-┌──────────────────▼──────────────────┐
-│          ticket_messages            │
-├─────────────────────────────────────┤
-│ PK  message_id     SERIAL           │
-│ FK  ticket_id      INTEGER          │
-│     message_text   TEXT             │
-│     author         VARCHAR(100)     │
-│     created_at     TIMESTAMP        │
-└─────────────────────────────────────┘
-```
-
-### Relationship
-
-```text
-tickets.ticket_id
-        │
-        │ 1 : Many
-        ▼
-ticket_messages.ticket_id
-```
-
-A single support ticket can contain multiple messages.
-
-Example:
-
-```text
-Ticket #1
-    │
-    ├── Message #1
-    └── Message #2
-
-Ticket #2
-    │
-    ├── Message #3
-    └── Message #4
-
-Ticket #3
-    │
-    ├── Message #5
-    └── Message #6
-
-Ticket #4
-    │
-    └── Message #7
-```
-
-The `ticket_id` foreign key ensures that every message belongs to an existing support ticket.
+    ┌─────────────────────────────────────┐
+    │              tickets                │
+    ├─────────────────────────────────────┤
+    │ PK  ticket_id      SERIAL           │
+    │     title          VARCHAR(200)     │
+    │     status         VARCHAR(50)      │
+    │     priority       VARCHAR(20)      │
+    │     created_by     VARCHAR(100)     │
+    │     created_at     TIMESTAMP        │
+    └──────────────────┬──────────────────┘
+                       │
+                       │ 1 : Many
+                       ▼
+    ┌─────────────────────────────────────┐
+    │          ticket_messages            │
+    ├─────────────────────────────────────┤
+    │ PK  message_id     SERIAL           │
+    │ FK  ticket_id      INTEGER          │
+    │     message_text   TEXT             │
+    │     author         VARCHAR(100)     │
+    │     created_at     TIMESTAMP        │
+    └─────────────────────────────────────┘
 
 ### Table Responsibilities
 
 | Table | Responsibility |
 |---|---|
-| `tickets` | Stores support ticket information and current status |
+| `tickets` | Stores ticket information, status, and priority |
 | `ticket_messages` | Stores conversations associated with each ticket |
+
+A single support ticket can contain multiple messages.
 
 ---
 
-# ⚙️ Application Features
+## ⚙️ Application Features
 
-## 1. View Support Tickets
+### 1. View Support Tickets
 
-Users can view available support tickets along with:
+Users can view:
 
 - Ticket ID
 - Title
 - Status
+- Priority
 - Creator
 - Creation timestamp
 
----
+### 2. Select a Ticket and View Messages
 
-## 2. Select a Ticket and View Messages
+Users can select a ticket and view its associated conversation history.
 
-Users can select a ticket from the dropdown.
+### 3. Create a Ticket
 
-The application retrieves the messages associated with the selected ticket from Lakebase using the `ticket_id`.
-
----
-
-## 3. Create a Ticket
-
-Users can create a new ticket by providing:
+Users can create a ticket using:
 
 - Ticket title
+- Priority
 - Created by
 
-The ticket is inserted into the `tickets` table.
+Supported priorities:
 
-New tickets start with the status:
+    low
+    medium
+    high
+    critical
 
-```text
-open
-```
+New tickets start with:
+
+    open
 
 The `created_at` timestamp is generated automatically by the database.
 
----
+### 4. Add a Message
 
-## 4. Add a Message
+Users can add messages to an existing ticket.
 
-Users can add a message to the selected ticket.
+Each message is associated with the selected ticket using `ticket_id`.
 
-The message is inserted into the `ticket_messages` table.
+### 5. Update Ticket Status
 
-The message is associated with the selected ticket using `ticket_id`.
+Supported statuses:
 
----
-
-## 5. Update Ticket Status
-
-Users can update the status of a ticket.
-
-Supported statuses are:
-
-```text
-open
-in_progress
-resolved
-```
+    open
+    in_progress
+    resolved
 
 The updated status is persisted in Lakebase.
 
----
+### 6. Ticket Priority
 
-# 🔄 Application Flow
+Not every support issue has the same urgency.
 
-```text
-                    SupportDesk
-                        │
-          ┌─────────────┼─────────────┐
-          │             │             │
-          ▼             ▼             ▼
-    Create Ticket   View Tickets   Select Ticket
-          │                           │
-          ▼                           ▼
-    INSERT ticket              View Messages
-          │                           │
-          ▼                           ▼
-       Lakebase                 Add Message
-                                    │
-                                    ▼
-                              INSERT message
-                                    │
-                                    ▼
-                                 Lakebase
+The application allows support teams to assign:
 
-                         Update Status
-                               │
-                               ▼
-                         UPDATE ticket
-                               │
-                               ▼
-                            Lakebase
-```
+    low
+    medium
+    high
+    critical
+
+Priority is stored directly in the `tickets` table and can be updated for existing tickets.
+
+Example:
+
+    High
+      ↓
+    Critical
+      ↓
+    Persisted in Lakebase
+
+The priority feature was tested on the deployed Databricks application and verified after refreshing the application.
 
 ---
 
-# 🔐 Database Connectivity
+## 🔄 Application Flow
+
+    Create Ticket
+          │
+          ▼
+       Lakebase
+          │
+          ▼
+     View Ticket
+          │
+          ├──────────────► View Messages
+          │                     │
+          │                     ▼
+          │                Add Message
+          │                     │
+          │                     ▼
+          │                  Lakebase
+          │
+          ├──────────────► Update Status
+          │                     │
+          │                     ▼
+          │                  Lakebase
+          │
+          └──────────────► Update Priority
+                                │
+                                ▼
+                             Lakebase
+
+---
+
+## 🔐 Database Connectivity
 
 The application uses:
 
@@ -258,90 +221,71 @@ The application dynamically generates database credentials using the Databricks 
 
 Database passwords are not hard-coded into the application.
 
-The connection flow is:
+Connection flow:
 
-```text
-Databricks App
-      │
-      ▼
-Databricks SDK
-      │
-      ▼
-Generate database credential
-      │
-      ▼
-psycopg / ConnectionPool
-      │
-      ▼
-Lakebase PostgreSQL
-```
+    Databricks App
+          │
+          ▼
+    Databricks SDK
+          │
+          ▼
+    Generate database credential
+          │
+          ▼
+    psycopg / ConnectionPool
+          │
+          ▼
+    Lakebase PostgreSQL
 
 ---
 
-# 🔑 Database Permissions
+## 🔑 Database Permissions
 
 The Databricks App connects to Lakebase using its service principal.
 
-The application was granted the required PostgreSQL permissions on:
+The application uses the `public` schema containing:
 
-```text
-public schema
-       │
-       ├── tickets
-       │
-       └── ticket_messages
-```
+    public
+    ├── tickets
+    └── ticket_messages
 
-Required operations include:
+Required PostgreSQL operations include:
 
 - SELECT
 - INSERT
 - UPDATE
 - DELETE
 
-Sequence permissions were also granted to support automatically generated IDs.
-
-This demonstrates an important database security concept:
-
-> Database-level connectivity does not automatically provide table-level access.
-
-Table permissions must be explicitly granted to the application's PostgreSQL role.
+Sequence permissions were also configured to support automatically generated IDs.
 
 ---
 
-# 📁 Project Structure
+## 📁 Project Structure
 
-```text
-supportdesk-lakebase/
-│
-├── business/
-│
-├── sql/
-│
-├── app/
-│   ├── app.py
-│   ├── app.yaml
-│   ├── manifest.yaml
-│   └── requirements.txt
-│
-└── README.md
-```
-
-### `business/`
-
-Contains the business problem and project requirements documentation.
-
-### `sql/`
-
-Contains the database schema and sample data scripts.
-
-### `app/`
-
-Contains the Streamlit application and Databricks Apps configuration.
+    supportdesk-lakebase/
+    │
+    ├── business/
+    │
+    ├── sql/
+    │
+    ├── app/
+    │   ├── app.py
+    │   ├── app.yaml
+    │   ├── manifest.yaml
+    │   └── requirements.txt
+    │
+    ├── screenshots/
+    │   ├── deployed_application_page_1.png
+    │   ├── deployed_application_page_2.png
+    │   ├── deployed_application_page_3.png
+    │   ├── lakebase_ticket_messages.png
+    │   └── lakebase_tickets.png
+    │
+    └── README.md
 
 ---
 
-# 🛠️ Technology Stack
+## 🛠️ Technology Stack
 
 | Technology | Purpose |
 |---|---|
@@ -352,192 +296,166 @@ Contains the Streamlit application and Databricks Apps configuration.
 | PostgreSQL | Relational data storage |
 | psycopg | PostgreSQL connectivity |
 | psycopg-pool | Database connection pooling |
-| Databricks SDK | Databricks integration and database credentials |
+| Databricks SDK | Databricks integration |
 | SQL | Data modeling and database operations |
 | Databricks CLI | Source synchronization and deployment |
 
 ---
 
-# 🚀 Deployment
+## 🚀 Deployment
 
 The application is deployed using **Databricks Apps**.
 
-The application source contains:
+Application source:
 
-```text
-app.py
-app.yaml
-manifest.yaml
-requirements.txt
-```
+    app.py
+    app.yaml
+    manifest.yaml
+    requirements.txt
 
-## Authenticate with Databricks CLI
+Authenticate with Databricks CLI:
 
-```bash
-databricks auth login
-```
+    databricks auth login
 
-## Synchronize application source
+Synchronize the application source:
 
-From the project root:
+    databricks sync app "<WORKSPACE_SOURCE_PATH>"
 
-```bash
-databricks sync ./app "<WORKSPACE_SOURCE_PATH>"
-```
+Deploy the application:
 
-## Deploy the application
-
-```bash
-databricks apps deploy supportdesk-app --source-code-path "<WORKSPACE_SOURCE_PATH>"
-```
-
-After deployment, the application runs as a Databricks App and connects to Lakebase through the configured PostgreSQL resource.
+    databricks apps deploy supportdesk-app --source-code-path "<WORKSPACE_SOURCE_PATH>"
 
 ---
 
-# 🧪 Testing
+## 🧪 Testing
 
-The application was tested for the following operations.
-
-### Ticket Retrieval
-
-Existing tickets can be retrieved from Lakebase and displayed in the application.
+The application was tested through the deployed Databricks App against the actual Lakebase PostgreSQL database.
 
 ### Ticket Creation
 
-A new ticket can be created through the Streamlit interface.
-
-The new record remains available after refreshing the application.
+A new ticket can be created through the Streamlit interface and remains available after refreshing the application.
 
 ### Ticket Selection
 
 Users can select an existing ticket and view its associated messages.
 
-### Message Retrieval
-
-Messages are retrieved from the `ticket_messages` table based on `ticket_id`.
-
 ### Message Creation
 
-A new message can be added to an existing ticket.
-
-The message remains available after refreshing the application.
+A new message can be added to an existing ticket and remains persisted after refreshing.
 
 ### Status Update
 
 Ticket status can be changed between:
 
-```text
-open
-in_progress
-resolved
-```
+    open
+    in_progress
+    resolved
 
 The updated status remains persisted after refreshing the application.
 
+### Priority Update
+
+Ticket priority can be changed between:
+
+    low
+    medium
+    high
+    critical
+
+The priority feature was tested end-to-end:
+
+    High
+      ↓
+    Critical
+      ↓
+    Refresh application
+      ↓
+    Critical
+
+The updated priority was also verified in Lakebase.
+
 ---
 
-# 📊 Current Database State
+## 📊 Current Database State
 
 The final test database contains:
 
-```text
-tickets          → 4 records
-ticket_messages  → 7 records
-```
+    tickets          → 4 records
+    ticket_messages  → 7 records
 
-The database contains both:
+The database contains both original sample records and records created or modified through the deployed application.
 
-- Original sample records
-- Records created or modified through the deployed application
-
-This demonstrates that the application is performing real database operations rather than displaying hard-coded application data.
+This demonstrates that the application performs real database operations rather than displaying hard-coded data.
 
 ---
 
-# 🔄 CRUD Operations
+## 🔄 CRUD Operations
 
-The application performs transactional database operations across the two related tables.
+### Create Ticket
 
-## Create
+    INSERT INTO public.tickets
+        (title, status, priority, created_by)
+    VALUES
+        (%s, %s, %s, %s);
 
-Create a new ticket:
+### Create Message
 
-```sql
-INSERT INTO public.tickets
-    (title, status, created_by)
-VALUES
-    (%s, %s, %s);
-```
+    INSERT INTO public.ticket_messages
+        (ticket_id, message_text, author)
+    VALUES
+        (%s, %s, %s);
 
-Create a new message:
+### Read Tickets
 
-```sql
-INSERT INTO public.ticket_messages
-    (ticket_id, message_text, author)
-VALUES
-    (%s, %s, %s);
-```
+    SELECT
+        ticket_id,
+        title,
+        status,
+        priority,
+        created_by,
+        created_at
+    FROM public.tickets
+    ORDER BY created_at DESC;
 
-## Read
+### Read Messages
 
-Retrieve tickets:
+    SELECT
+        message_id,
+        message_text,
+        author,
+        created_at
+    FROM public.ticket_messages
+    WHERE ticket_id = %s
+    ORDER BY created_at ASC;
 
-```sql
-SELECT
-    ticket_id,
-    title,
-    status,
-    created_by,
-    created_at
-FROM public.tickets
-ORDER BY created_at DESC;
-```
+### Update Status
 
-Retrieve messages for a ticket:
+    UPDATE public.tickets
+    SET status = %s
+    WHERE ticket_id = %s;
 
-```sql
-SELECT
-    message_id,
-    message_text,
-    author,
-    created_at
-FROM public.ticket_messages
-WHERE ticket_id = %s
-ORDER BY created_at ASC;
-```
+### Update Priority
 
-## Update
-
-Update ticket status:
-
-```sql
-UPDATE public.tickets
-SET status = %s
-WHERE ticket_id = %s;
-```
-
-## Delete
+    UPDATE public.tickets
+    SET priority = %s
+    WHERE ticket_id = %s;
 
 The current MVP does not expose ticket deletion through the UI.
 
-Delete functionality can be added as a future enhancement with a confirmation step.
-
 ---
 
-# 🧠 Why Lakebase?
+## 🧠 Why Lakebase?
 
 The support application requires **transactional operational data**.
 
-Users are continuously performing operations such as:
+Users continuously perform operations such as:
 
-```text
-Create Ticket
-Add Message
-Update Status
-Read Ticket
-Read Conversation
-```
+    Create Ticket
+    Add Message
+    Update Status
+    Update Priority
+    Read Ticket
+    Read Conversation
 
 These operations require:
 
@@ -549,15 +467,15 @@ These operations require:
 - Transaction support
 - Persistent operational state
 
-Lakebase provides a PostgreSQL-compatible operational database suited for this type of application workload.
+Lakebase provides a PostgreSQL-compatible operational database suited for this workload.
 
-This is different from using a traditional analytical table primarily designed for reporting and large-scale analytical queries.
+This differs from storing the same data primarily in a traditional analytical table designed for reporting and large-scale analytical queries.
 
 ---
 
-# 📈 Potential Analytics Layer
+## 📈 Potential Analytics Layer
 
-Although this project focuses on the transactional application, the data can later become the source for an analytical layer.
+The transactional data can later become the source for an analytical layer.
 
 Potential KPIs include:
 
@@ -566,43 +484,40 @@ Potential KPIs include:
 - In-progress tickets
 - Resolved tickets
 - Tickets by status
+- Tickets by priority
 - Tickets by creator
 - Average resolution time
 - Messages per ticket
 - Tickets created per day
-- Unresolved ticket backlog
+- High-priority ticket backlog
+- Critical ticket backlog
 
-A future architecture could look like:
+Future architecture:
 
-```text
-                 Lakebase
-                    │
-                    ▼
-             Data Engineering
-                    │
-             ┌──────┴──────┐
-             │             │
-             ▼             ▼
-           Spark        SQL / ETL
-             │             │
-             └──────┬──────┘
-                    │
-                    ▼
-             Analytical Layer
-                    │
-                    ▼
-               BI Dashboard
-```
+    Lakebase
+       │
+       ▼
+    Data Engineering
+       │
+       ├──────────────┐
+       ▼              ▼
+    Spark          SQL / ETL
+       │              │
+       └──────┬───────┘
+              ▼
+       Analytical Layer
+              │
+              ▼
+         BI Dashboard
 
 This would extend the project from a transactional application into a complete Data Engineering pipeline.
 
 ---
 
-# 🔮 Future Improvements
+## 🔮 Future Improvements
 
-Possible future enhancements include:
+Possible future enhancements:
 
-- Ticket priority
 - Ticket categories
 - Ticket assignment
 - Search and filtering
@@ -621,34 +536,11 @@ Possible future enhancements include:
 
 ---
 
-# 🎓 Key Learnings
+## 🎓 Key Learnings
 
-The most important learning from this project was understanding how a transactional application can be built around a PostgreSQL-compatible database within the Databricks ecosystem.
+This project provided hands-on experience in building a transactional application around a PostgreSQL-compatible database within the Databricks ecosystem.
 
-The application separates the presentation, application, and data layers:
-
-```text
-┌────────────────────┐
-│    Streamlit UI    │
-└─────────┬──────────┘
-          │
-          ▼
-┌────────────────────┐
-│ Application Logic  │
-└─────────┬──────────┘
-          │
-          ▼
-┌────────────────────┐
-│ psycopg / Pool     │
-└─────────┬──────────┘
-          │
-          ▼
-┌────────────────────┐
-│ Lakebase PostgreSQL│
-└────────────────────┘
-```
-
-The project also provided hands-on experience with:
+Key learnings include:
 
 - Databricks Apps
 - Lakebase
@@ -665,27 +557,35 @@ The project also provided hands-on experience with:
 - Cloud deployment
 - Persistent transactional data
 
+The priority enhancement reinforced an important business-first lesson:
+
+> A data model should support the decisions the business needs to make.
+
+Adding priority changed the system from simply tracking **what tickets exist** to helping the support team understand **which tickets should be handled first**.
+
 ---
 
-# 🏆 Project Outcome
+## 🏆 Project Outcome
 
 The final application provides a working internal support ticket management system.
 
 Users can:
 
-```text
-Create Ticket
-      ↓
-View Ticket
-      ↓
-View Messages
-      ↓
-Add Message
-      ↓
-Update Status
-      ↓
-Persist Changes
-```
+    Create Ticket
+          ↓
+    Assign Priority
+          ↓
+    View Ticket
+          ↓
+    View Messages
+          ↓
+    Add Message
+          ↓
+    Update Status
+          ↓
+    Update Priority
+          ↓
+    Persist Changes
 
 All transactional changes are stored in **Databricks Lakebase PostgreSQL**.
 
@@ -695,25 +595,62 @@ The application is deployed using **Databricks Apps**.
 
 # 📸 Project Evidence
 
-The project submission includes evidence of:
+All project evidence is stored in the `screenshots/` directory.
 
-### Deployed Application
+## 1. Deployed Application — Main Page
 
-The SupportDesk application running successfully through Databricks Apps.
+The deployed SupportDesk application showing the ticket creation interface and support ticket selector.
 
-### Lakebase Tickets Table
+![SupportDesk deployed application](screenshots/deployed_application_page_1.png)
 
-The `tickets` table containing persisted support ticket records.
+## 2. Deployed Application — Ticket Details
 
-### Lakebase Ticket Messages Table
+The deployed application showing ticket details, status management, and ticket messages.
 
-The `ticket_messages` table containing persisted ticket conversation records.
+![SupportDesk ticket details](screenshots/deployed_application_page_2.png)
 
-The screenshots demonstrate that the application's data is stored in Lakebase rather than being hard-coded in the application.
+## 3. Deployed Application — Add Message
+
+The application provides a message form for adding support conversation entries to the selected ticket.
+
+![SupportDesk add message](screenshots/deployed_application_page_3.png)
+
+## 4. Lakebase — Ticket Messages
+
+The `ticket_messages` table contains persisted support conversation records associated with tickets.
+
+![Lakebase ticket messages](screenshots/lakebase_ticket_messages.png)
+
+## 5. Lakebase — Tickets
+
+The `tickets` table contains persisted support ticket records.
+
+![Lakebase tickets](screenshots/lakebase_tickets.png)
+
+## 6. Priority Feature
+
+The priority feature was added as a continuation of the initial SupportDesk implementation.
+
+Supported priorities:
+
+    low
+    medium
+    high
+    critical
+
+The feature was tested on the deployed application by changing a ticket from:
+
+    High → Critical
+
+After refreshing the application, the priority remained:
+
+    Critical
+
+The value was also verified in Lakebase, confirming that the change was persisted in the transactional database.
 
 ---
 
-# 📋 Project Requirements Checklist
+## 📋 Project Requirements Checklist
 
 | Requirement | Status |
 |---|---|
@@ -729,33 +666,64 @@ The screenshots demonstrate that the application's data is stored in Lakebase ra
 | Create new ticket | ✅ |
 | Add message | ✅ |
 | Update ticket status | ✅ |
+| Ticket priority | ✅ |
+| Update ticket priority | ✅ |
 | Databricks App deployed | ✅ |
 | Lakebase persistence verified | ✅ |
 | Refresh persistence tested | ✅ |
 
 ---
 
-# 💡 Business Value
+## 🎯 Business Value
 
 The application provides a centralized operational workflow for internal support teams.
 
 Instead of tracking support requests through scattered communication channels, employees can:
 
 1. Create a support request.
-2. Track its status.
-3. View the conversation history.
-4. Add additional information.
-5. Resolve the ticket.
+2. Assign its priority.
+3. Track its status.
+4. View the conversation history.
+5. Add additional information.
+6. Update priority as urgency changes.
+7. Resolve the ticket.
+
+The addition of priority introduces a basic decision-support capability:
+
+    Support Requests
+           ↓
+        Priority
+           ↓
+    Critical / High / Medium / Low
+           ↓
+    Better Work Ordering
 
 This creates a structured operational data foundation that can later support reporting, analytics, automation, and AI-powered support workflows.
 
 ---
 
-# 👨‍💻 Author
+## 🎓 Assignment
+
+This project was completed as part of the **RISE of AI Data Engineering Community Edition** course assignment by **Zach Wilson**.
+
+Thanks to **Zach Wilson** for the hands-on assignment and practical learning experience.
+
+---
+
+## 🔗 Project Links
+
+**Live Application:**
+
+https://supportdesk-app-7474644091149607.aws.databricksapps.com/
+
+
+---
+
+## 👨‍💻 Author
 
 **Shailesh**
 
-Data Engineering Portfolio Project
+**Data Engineering Portfolio — DE-001**
 
 Built with:
 
