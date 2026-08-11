@@ -1,4 +1,4 @@
-# 🎫 DE001 - SupportDesk — Lakebase-Powered Support Ticket Management
+# 🎫 DE-001 - SupportDesk — Lakebase-Powered Support Ticket Management
 
 A transactional support ticket management application built using **Databricks Apps, Streamlit, and Lakebase PostgreSQL**.
 
